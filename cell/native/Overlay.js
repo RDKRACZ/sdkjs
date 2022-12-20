@@ -2284,6 +2284,15 @@ CAutoshapeTrack.prototype =
 //        ctx.beginPath();
     },
 
+
+    DrawGeomEditPoint: function(matrix, gmEditPoint)
+    {
+    },
+
+    DrawGeometryEdit: function (matrix, pathLst, gmEditList, gmEditPoint, oBounds)
+    {
+    },
+
     DrawEditWrapPointsPolygon : function(points, matrix)
     {
         if (!matrix)
@@ -2834,6 +2843,18 @@ CSlideBoundsChecker.prototype =
     },
 
     FillTextCode : function(x,y,lUnicode)
+    {
+        // убыстеренный вариант. здесь везде заточка на то, что приходит одна буква
+        if (this.m_bIsBreak)
+            return;
+
+        // TODO: нужен другой метод отрисовки!!!
+        var _x = this.m_oFullTransform.TransformPointX(x, y);
+        var _y = this.m_oFullTransform.TransformPointY(x, y);
+        this.Bounds.CheckRect(_x, _y, 1, 1);
+    },
+
+    tg : function(gid,x,y)
     {
         // убыстеренный вариант. здесь везде заточка на то, что приходит одна буква
         if (this.m_bIsBreak)

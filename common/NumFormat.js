@@ -232,7 +232,7 @@ function FormatObjBracket(sData)
 					case "<=": this.operator = NumComporationOperators.lessorequal;break;
 					case "<>": this.operator = NumComporationOperators.notequal;break;
 				}
-				this.operatorValue = parseInt(data.substring(nIndex));
+				this.operatorValue = parseFloat(data.substring(nIndex));
 			}
             else
             {
@@ -641,6 +641,7 @@ function NumFormat(bAddMinusIfNes)
     this.Color = -1;
 	this.ComporationOperator = null;
 	this.LCID = null;
+	this.CurrencyString = null;
     
 	this.bGeneralChart = false;//если в формате только один текст(например в chart "Основной")
     this.bAddMinusIfNes = bAddMinusIfNes;//когда не задано форматирование для отрицательных чисел иногда надо вставлять минус
@@ -829,10 +830,9 @@ NumFormat.prototype =
             {
                 this._addToFormat(numFormat_TimeSeparator);
             }
-            else if('0' <= next && next <= '9')
+            else if('0' === next)
             {
-                //не 0 может быть только в дробях
-                this._addToFormat(numFormat_Digit, next - 0);
+                this._addToFormat(numFormat_Digit, 0);
             }
             else if("#" == next)
             {
@@ -1123,7 +1123,7 @@ NumFormat.prototype =
                     for(var j = i + 1; j < nFormatLength; ++j)
                     {
                         var subitem = this.aRawFormat[j];
-                        if(this._isDigitType(subitem.type))
+                        if(this._isDigitType(subitem.type) || (numFormat_Text === subitem.type && '0' <= subitem.val && subitem.val <= '9'))
                             nRight = j;
                         else
                             break;
@@ -1137,14 +1137,14 @@ NumFormat.prototype =
                         i -= i - nLeft;
                         this.bSlash = true;
 
-                        var flag = (item.aRight.length > 0) && (item.aRight[0].type == numFormat_Digit) && (item.aRight[0].val > 0);
+                        var flag = (item.aRight.length > 0) && (item.aRight[0].type == numFormat_Digit || item.aRight[0].type == numFormat_Text) && (parseInt(item.aRight[0].val) > 0);
                         if(flag)
                         {
                             var rPart = 0;
                             for(var j = 0; j< item.aRight.length; j++)
                             {
-                                if(item.aRight[j].type == numFormat_Digit)
-                                    rPart = rPart*10 + item.aRight[j].val;
+                                if(item.aRight[j].type == numFormat_Digit || item.aRight[j].type == numFormat_Text)
+                                    rPart = rPart*10 + parseInt(item.aRight[j].val);
                                 else
                                 {
                                     bValid = false;
@@ -1794,6 +1794,7 @@ NumFormat.prototype =
                     } else if (numFormat_Bracket == item.type) {
                         if (null != item.CurrencyString) {
 							this.bCurrency = true;
+							this.CurrencyString = item.CurrencyString;
                             sText += item.CurrencyString;
                         }
 						if (null != item.Lid) {
@@ -2499,6 +2500,7 @@ NumFormat.prototype =
 		info.asc_setDecimalPlaces(this.aFracFormat.length);
 		info.asc_setSeparator(this.bThousandSep);
 		info.asc_setSymbol(this.LCID);
+		info.asc_setCurrencySymbol(this.CurrencyString);
 		return info;
 	},
 	isGeneral: function() {
@@ -2907,9 +2909,8 @@ CellFormat.prototype =
 				var oCurFormat = this.aComporationFormats[i];
 				if (0 != i) {
 					res += ";";
-				} else {
-					res += oCurFormat.toString(nShift, useLocaleFormat);
 				}
+				res += oCurFormat.toString(nShift, useLocaleFormat);
 			}
 		}
 		return res;
@@ -4383,21 +4384,30 @@ function setCurrentCultureInfo (LCID, decimalSeparator, groupSeparator) {
 		var symbol = opt_currency ? cultureInfo.CurrencySymbol : '';
 		return '[$' + symbol + '-' + cultureInfo.LCID.toString(16).toUpperCase() + ']';
 	}
+	function getCurrencyCustomFormat(symbol) {
+		return '[$' + symbol + ']';
+	}
 
-	function getCurrencyFormatSimple(opt_cultureInfo, opt_fraction, opt_currency, opt_currencyLocale, opt_red) {
+	function getCurrencyFormatSimple(opt_cultureInfo, opt_fraction, opt_currency, opt_currencyLocale, opt_currencySymbol, opt_red) {
 		var cultureInfo = opt_cultureInfo ? opt_cultureInfo : g_oDefaultCultureInfo;
 		var numberFormat = getNumberFormatSimple(true, opt_fraction);
 		var signCurrencyFormat;
 		var signCurrencyFormatEnd;
 		var signCurrencyFormatSpace;
 		if (opt_currency) {
-			if (opt_currencyLocale) {
-				signCurrencyFormat = getLocaleFormat(cultureInfo, true);
+			if (opt_currencySymbol) {
+				signCurrencyFormat = getCurrencyCustomFormat(opt_currencySymbol);
+				signCurrencyFormatEnd = signCurrencyFormat;
+				signCurrencyFormat = signCurrencyFormatSpace = signCurrencyFormat + '\\ ';
 			} else {
-				signCurrencyFormat = '"' + cultureInfo.CurrencySymbol + '"';
+				if (opt_currencyLocale) {
+					signCurrencyFormat = getLocaleFormat(cultureInfo, true);
+				} else {
+					signCurrencyFormat = '"' + cultureInfo.CurrencySymbol + '"';
+				}
+				signCurrencyFormatEnd = signCurrencyFormat;
+				signCurrencyFormatSpace = signCurrencyFormat + '\\ ';
 			}
-			signCurrencyFormatEnd = signCurrencyFormat;
-			signCurrencyFormatSpace = signCurrencyFormat + '\\ ';
 		} else {
 			signCurrencyFormatEnd = signCurrencyFormat = signCurrencyFormatSpace = '';
 			for (var i = 0; i < cultureInfo.CurrencySymbol.length; ++i) {
@@ -4486,15 +4496,22 @@ function setCurrentCultureInfo (LCID, decimalSeparator, groupSeparator) {
 		return positiveFormat + ';' + red + negativeFormat;
 	}
 
-	function getCurrencyFormatSimple2(opt_cultureInfo, opt_fraction, opt_currency, opt_negative) {
+	function getCurrencyFormatSimple2(opt_cultureInfo, opt_fraction, opt_currency, opt_currencySymbol, opt_negative) {
 		var cultureInfo = opt_cultureInfo ? opt_cultureInfo : g_oDefaultCultureInfo;
 		var numberFormat = getNumberFormatSimple(true, opt_fraction);
 		var signCurrencyFormat;
 		var signCurrencyFormatEnd;
 		var signCurrencyFormatSpace;
 		if (opt_currency) {
-			signCurrencyFormat = signCurrencyFormatEnd = getLocaleFormat(cultureInfo, true);
-			signCurrencyFormatSpace = signCurrencyFormat + '\\ ';
+			if (opt_currencySymbol) {
+				signCurrencyFormat = getCurrencyCustomFormat(opt_currencySymbol);
+				signCurrencyFormatEnd = signCurrencyFormat;
+				signCurrencyFormat = signCurrencyFormatSpace = signCurrencyFormat + '\\ ';
+			} else {
+				signCurrencyFormat = getLocaleFormat(cultureInfo, true);
+				signCurrencyFormatEnd = signCurrencyFormat;
+				signCurrencyFormatSpace = signCurrencyFormat + '\\ ';
+			}
 		} else {
 			signCurrencyFormatEnd = signCurrencyFormat = signCurrencyFormatSpace = '';
 			for (var i = 0; i < cultureInfo.CurrencySymbol.length; ++i) {
@@ -4531,7 +4548,7 @@ function setCurrentCultureInfo (LCID, decimalSeparator, groupSeparator) {
 		return opt_negative ? positiveFormat + ';[Red]' + positiveFormat : positiveFormat;
 	}
 
-	function getCurrencyFormat(opt_cultureInfo, opt_fraction, opt_currency, opt_currencyLocale) {
+	function getCurrencyFormat(opt_cultureInfo, opt_fraction, opt_currency, opt_currencyLocale, opt_currencySymbol) {
 		var cultureInfo = opt_cultureInfo ? opt_cultureInfo : g_oDefaultCultureInfo;
 		var numberFormat = getNumberFormatSimple(true, opt_fraction);
 		var nullSignFormat = '* "-"';
@@ -4542,13 +4559,19 @@ function setCurrentCultureInfo (LCID, decimalSeparator, groupSeparator) {
 		var signCurrencyFormatEnd;
 		var signCurrencyFormatSpace;
 		if (opt_currency) {
-			if (opt_currencyLocale) {
-				signCurrencyFormat = getLocaleFormat(cultureInfo, true);
+			if (opt_currencySymbol) {
+				signCurrencyFormat = getCurrencyCustomFormat(opt_currencySymbol);
+				signCurrencyFormatEnd = signCurrencyFormat;
+				signCurrencyFormat = signCurrencyFormatSpace = signCurrencyFormat + '\\ ';
 			} else {
-				signCurrencyFormat = '"' + cultureInfo.CurrencySymbol + '"';
+				if (opt_currencyLocale) {
+					signCurrencyFormat = getLocaleFormat(cultureInfo, true);
+				} else {
+					signCurrencyFormat = '"' + cultureInfo.CurrencySymbol + '"';
+				}
+				signCurrencyFormatEnd = signCurrencyFormat;
+				signCurrencyFormatSpace = signCurrencyFormat + '\\ ';
 			}
-			signCurrencyFormatEnd = signCurrencyFormat;
-			signCurrencyFormatSpace = signCurrencyFormat + '\\ ';
 		} else {
 			signCurrencyFormatEnd = signCurrencyFormat = signCurrencyFormatSpace = '';
 			for (var i = 0; i < cultureInfo.CurrencySymbol.length; ++i) {
@@ -4655,8 +4678,9 @@ function setCurrentCultureInfo (LCID, decimalSeparator, groupSeparator) {
 		if (info) {
 			var format;
 			var i;
+			var currencySymbol = info.currency;
 			var cultureInfo = g_aCultureInfos[info.symbol];
-			var currency = !!cultureInfo;
+			var hasCurrency = !!cultureInfo || !!currencySymbol;
 			if (Asc.c_oAscNumFormatType.General === info.type) {
 				res.push(AscCommon.g_cGeneralFormat);
 			} else if (Asc.c_oAscNumFormatType.Number === info.type) {
@@ -4666,12 +4690,12 @@ function setCurrentCultureInfo (LCID, decimalSeparator, groupSeparator) {
 				res.push(getNumberFormat(cultureInfo, info.separator, info.decimalPlaces, false));
 				res.push(getNumberFormat(cultureInfo, info.separator, info.decimalPlaces, true));
 			} else if (Asc.c_oAscNumFormatType.Currency === info.type) {
-				res.push(getCurrencyFormatSimple2(cultureInfo, info.decimalPlaces, currency, false));
-				res.push(getCurrencyFormatSimple2(cultureInfo, info.decimalPlaces, currency, true));
-				res.push(getCurrencyFormatSimple(cultureInfo, info.decimalPlaces, currency, currency, false));
-				res.push(getCurrencyFormatSimple(cultureInfo, info.decimalPlaces, currency, currency, true));
+				res.push(getCurrencyFormatSimple2(cultureInfo, info.decimalPlaces, hasCurrency, currencySymbol, false));
+				res.push(getCurrencyFormatSimple2(cultureInfo, info.decimalPlaces, hasCurrency, currencySymbol, true));
+				res.push(getCurrencyFormatSimple(cultureInfo, info.decimalPlaces, hasCurrency, true, currencySymbol, false));
+				res.push(getCurrencyFormatSimple(cultureInfo, info.decimalPlaces, hasCurrency, true, currencySymbol, true));
 			} else if (Asc.c_oAscNumFormatType.Accounting === info.type) {
-				res.push(getCurrencyFormat(cultureInfo, info.decimalPlaces, currency, currency));
+				res.push(getCurrencyFormat(cultureInfo, info.decimalPlaces, hasCurrency, true, currencySymbol));
 			} else if (Asc.c_oAscNumFormatType.Date === info.type) {
 				//todo locale dependence
 				if (info.symbol == g_oDefaultCultureInfo.LCID) {
@@ -4732,14 +4756,14 @@ function setCurrentCultureInfo (LCID, decimalSeparator, groupSeparator) {
 				for (i = 0; i <= 4; ++i) {
 					res.push(AscCommonExcel.aStandartNumFormats[i]);
 				}
-				res.push(getCurrencyFormatSimple(null, 0, false, false, false));
-				res.push(getCurrencyFormatSimple(null, 0, false, false, true));
-				res.push(getCurrencyFormatSimple(null, 2, false, false, false));
-				res.push(getCurrencyFormatSimple(null, 2, false, false, true));
-				res.push(getCurrencyFormatSimple(null, 0, true, false, false));
-				res.push(getCurrencyFormatSimple(null, 0, true, false, true));
-				res.push(getCurrencyFormatSimple(null, 2, true, false, false));
-				res.push(getCurrencyFormatSimple(null, 2, true, false, true));
+				res.push(getCurrencyFormatSimple(null, 0, false, false, null, false));
+				res.push(getCurrencyFormatSimple(null, 0, false, false, null, true));
+				res.push(getCurrencyFormatSimple(null, 2, false, false, null, false));
+				res.push(getCurrencyFormatSimple(null, 2, false, false, null, true));
+				res.push(getCurrencyFormatSimple(null, 0, true, false, null, false));
+				res.push(getCurrencyFormatSimple(null, 0, true, false, null, true));
+				res.push(getCurrencyFormatSimple(null, 2, true, false, null, false));
+				res.push(getCurrencyFormatSimple(null, 2, true, false, null, true));
 				for (i = 9; i <= 13; ++i) {
 					res.push(AscCommonExcel.aStandartNumFormats[i]);
 				}
@@ -4754,16 +4778,16 @@ function setCurrentCultureInfo (LCID, decimalSeparator, groupSeparator) {
 				for (i = 45; i <= 49; ++i) {
 					res.push(AscCommonExcel.aStandartNumFormats[i]);
 				}
-				res.push(AscCommon.getCurrencyFormat(null, 0, true, false));
-				res.push(AscCommon.getCurrencyFormat(null, 0, false, false));
-				res.push(AscCommon.getCurrencyFormat(null, 2, true, false));
-				res.push(AscCommon.getCurrencyFormat(null, 2, false, false));
+				res.push(AscCommon.getCurrencyFormat(null, 0, true, false, null));
+				res.push(AscCommon.getCurrencyFormat(null, 0, false, false, null));
+				res.push(AscCommon.getCurrencyFormat(null, 2, true, false, null));
+				res.push(AscCommon.getCurrencyFormat(null, 2, false, false, null));
 			} else {
 				res.push(AscCommon.g_cGeneralFormat);
 				res.push('0.00');
 				res.push('0.00E+00');
-				res.push(getCurrencyFormat(cultureInfo, 2, currency, true));
-				res.push(getCurrencyFormatSimple2(cultureInfo, 2, currency, false));
+				res.push(getCurrencyFormat(cultureInfo, 2, hasCurrency, true, currencySymbol));
+				res.push(getCurrencyFormatSimple2(cultureInfo, 2, hasCurrency, currencySymbol, false));
 				res.push(getShortDateFormat(cultureInfo));
 				//todo F400
 				if (AscCommon.is12HourTimeFormat(cultureInfo)) {
@@ -4780,78 +4804,114 @@ function setCurrentCultureInfo (LCID, decimalSeparator, groupSeparator) {
 	}
 	function getFormatByStandardId(id) {
 		var res = null;
-		if (15 <= id && id <= 17) {
-			switch (id) {
-				case 15:
-					res = AscCommon.getShortDateMonthFormat(true, true, null);
-					break;
-				case 16:
-					res = AscCommon.getShortDateMonthFormat(true, false, null);
-					break;
-				case 17:
-					res = AscCommon.getShortDateMonthFormat(false, true, null);
-					break;
+		if (59 <= id && id <= 78) {
+			if (69 <= id && id <= 71) {
+				id += 1;
 			}
-		} else {
+			id -= 58;
+		} else if (79 <= id && id <= 81) {
+			id -= 34;
+		}
 			//todo currencyLocale true/false?
 			var currencyLocale = true;
 			switch (id) {
 				case 5:
-					res = AscCommon.getCurrencyFormatSimple(null, 0, true, currencyLocale, false);
+					res = AscCommon.getCurrencyFormatSimple(null, 0, true, currencyLocale, null, false);
 					break;
 				case 6:
-					res = AscCommon.getCurrencyFormatSimple(null, 0, true, currencyLocale, true);
+					res = AscCommon.getCurrencyFormatSimple(null, 0, true, currencyLocale, null, true);
 					break;
 				case 7:
-					res = AscCommon.getCurrencyFormatSimple(null, 2, true, currencyLocale, false);
+					res = AscCommon.getCurrencyFormatSimple(null, 2, true, currencyLocale, null, false);
 					break;
 				case 8:
-					res = AscCommon.getCurrencyFormatSimple(null, 2, true, currencyLocale, true);
+					res = AscCommon.getCurrencyFormatSimple(null, 2, true, currencyLocale, null, true);
 					break;
 				case 14:
 					res = AscCommon.getShortDateFormat(null);
 					break;
+			case 15:
+				res = AscCommon.getShortDateMonthFormat(true, true, null);
+				break;
+			case 16:
+				res = AscCommon.getShortDateMonthFormat(true, false, null);
+				break;
+			case 17:
+				res = AscCommon.getShortDateMonthFormat(false, true, null);
+				break;
 				case 22:
 					res = AscCommon.getShortDateFormat(null) + " h:mm";
 					break;
+			case 23:
+			case 24:
+			case 25:
+			case 26:
+				//like 0
+				res = "General";
+				break;
 				case 27:
 				case 28:
 				case 29:
 				case 30:
 				case 31:
+				//like 14
+				res = AscCommon.getShortDateFormat(null);
+				break;
+			case 32:
+			case 33:
+			case 34:
+			case 35:
+				//like 21
+				res = AscCommonExcel.aStandartNumFormats[21];
+				break;
 				case 36:
+				//like 14
 					res = AscCommon.getShortDateFormat(null);
 					break;
 				case 37:
-					res = AscCommon.getCurrencyFormatSimple(null, 0, false, currencyLocale, false);
+					res = AscCommon.getCurrencyFormatSimple(null, 0, false, currencyLocale, null, false);
 					break;
 				case 38:
-					res = AscCommon.getCurrencyFormatSimple(null, 0, false, currencyLocale, true);
+					res = AscCommon.getCurrencyFormatSimple(null, 0, false, currencyLocale, null, true);
 					break;
 				case 39:
-					res = AscCommon.getCurrencyFormatSimple(null, 2, false, currencyLocale, false);
+					res = AscCommon.getCurrencyFormatSimple(null, 2, false, currencyLocale, null, false);
 					break;
 				case 40:
-					res = AscCommon.getCurrencyFormatSimple(null, 2, false, currencyLocale, true);
+					res = AscCommon.getCurrencyFormatSimple(null, 2, false, currencyLocale, null, true);
 					break;
 				case 41:
-					res = AscCommon.getCurrencyFormat(null, 0, false, currencyLocale);
+					res = AscCommon.getCurrencyFormat(null, 0, false, currencyLocale, null);
 					break;
 				case 42:
-					res = AscCommon.getCurrencyFormat(null, 0, true, currencyLocale);
+					res = AscCommon.getCurrencyFormat(null, 0, true, currencyLocale, null);
 					break;
 				case 43:
-					res = AscCommon.getCurrencyFormat(null, 2, false, currencyLocale);
+					res = AscCommon.getCurrencyFormat(null, 2, false, currencyLocale, null);
 					break;
 				case 44:
-					res = AscCommon.getCurrencyFormat(null, 2, true, currencyLocale);
+					res = AscCommon.getCurrencyFormat(null, 2, true, currencyLocale, null);
 					break;
+			case 50:
+			case 51:
+			case 52:
+			case 53:
+			case 54:
+			case 55:
+			case 56:
+			case 57:
+			case 58:
+				//like 14
+				res = AscCommon.getShortDateFormat(null);
+				break;
                 default:
                     res = AscCommonExcel.aStandartNumFormats[id];
                     break;
 			}
-		}
 		return res;
+	}
+	function canGetFormatByStandardId(id) {
+		return (5 <= id && id <= 8) || (14 <= id && id <= 17) || 22 == id || (27 <= id && id <= 81);
 	}
 	function is12HourTimeFormat(opt_cultureInfo) {
 		var cultureInfo = opt_cultureInfo ? opt_cultureInfo : g_oDefaultCultureInfo;
@@ -4990,6 +5050,22 @@ var g_aCultureInfos = {
 };
 var g_oDefaultCultureInfo, g_oLCID;
 setCurrentCultureInfo(1033);//en-US//1033//fr-FR//1036//basq//1069//ru-Ru//1049//hindi//1081
+	var g_aAdditionalCurrencySymbols = ["ADP", "AED", "AFA", "AFN", "ALL", "AMD", "ANG", "AOA", "ARS", "ATS", "AUD",
+		"AWG", "AZM", "AZN", "BAM", "BBD", "BDT", "BEF", "BGL", "BGN", "BHD", "BIF", "BMD", "BND", "BOB", "BOV", "BRL",
+		"BSD", "BTN", "BWP", "BYB", "BYN", "BYR", "BZD", "CAD", "CDF", "CHE", "CHF", "CHW", "CLF", "CLP", "CNY", "COP",
+		"COU", "CRC", "CSD", "CUC", "CUP", "CVE", "CYP", "CZK", "DEM", "DJF", "DKK", "DOP", "DZD", "ECS", "ECV", "EEK",
+		"EGP", "ERN", "ESP", "ETB", "EUR", "FIM", "FJD", "FKP", "FRF", "GBP", "GEL", "GHC", "GHS", "GIP", "GMD", "GNF",
+		"GRD", "GTQ", "GYD", "HKD", "HNL", "HRK", "HTG", "HUF", "IDR", "IEP", "ILS", "INR", "IQD", "IRR", "ISK", "ITL",
+		"JMD", "JOD", "JPY", "KAF", "KES", "KGS", "KHR", "KMF", "KPW", "KRW", "KWD", "KYD", "KZT", "LAK", "LBP", "LKR",
+		"LRD", "LSL", "LTL", "LUF", "LVL", "LYD", "MAD", "MDL", "MGA", "MGF", "MKD", "MMK", "MNT", "MOP", "MRO", "MRU",
+		"MTL", "MUR", "MVR", "MWK", "MXN", "MXV", "MYR", "MZM", "MZN", "NAD", "NGN", "NIO", "NLG", "NOK", "NPR", "NTD",
+		"NZD", "OMR", "PAB", "PEN", "PGK", "PHP", "PKR", "PLN", "PTE", "PYG", "QAR", "ROL", "RON", "RSD", "RUB", "RUR",
+		"RWF", "SAR", "SBD", "SCR", "SDD", "SDG", "SDP", "SEK", "SGD", "SHP", "SIT", "SKK", "SLL", "SOS", "SPL", "SRD",
+		"SRG", "STD", "SVC", "SYP", "SZL", "THB", "TJR", "TJS", "TMM", "TMT", "TND", "TOP", "TRL", "TRY", "TTD", "TWD",
+		"TZS", "UAH", "UGX", "USD", "USN", "USS", "UYI", "UYU", "UZS", "VEB", "VEF", "VES", "VND", "VUV", "WST", "XAF",
+		"XAG", "XAU", "XB5", "XBA", "XBB", "XBC", "XBD", "XCD", "XDR", "XFO", "XFU", "XOF", "XPD", "XPF", "XPT", "XTS",
+		"XXX", "YER", "YUM", "ZAR", "ZMK", "ZMW", "ZWD", "ZWL", "ZWN", "ZWR"
+	];
 
     //---------------------------------------------------------export---------------------------------------------------
     window['AscCommon'] = window['AscCommon'] || {};
@@ -5011,6 +5087,7 @@ setCurrentCultureInfo(1033);//en-US//1033//fr-FR//1036//basq//1069//ru-Ru//1049/
 	window['AscCommon'].getCurrencyFormatSimple2 = getCurrencyFormatSimple2;
 	window['AscCommon'].getCurrencyFormat = getCurrencyFormat;
 	window['AscCommon'].getFormatCells = getFormatCells;
+	window['AscCommon'].canGetFormatByStandardId = canGetFormatByStandardId;
 	window['AscCommon'].getFormatByStandardId = getFormatByStandardId;
 	window['AscCommon'].is12HourTimeFormat = is12HourTimeFormat;
 	window['AscCommon'].compareNumbers = compareNumbers;
@@ -5022,6 +5099,7 @@ setCurrentCultureInfo(1033);//en-US//1033//fr-FR//1036//basq//1069//ru-Ru//1049/
     window["AscCommon"].g_oFormatParser = g_oFormatParser;
     window["AscCommon"].g_aCultureInfos = g_aCultureInfos;
     window["AscCommon"].g_oDefaultCultureInfo = g_oDefaultCultureInfo;
+	window["AscCommon"].g_aAdditionalCurrencySymbols = g_aAdditionalCurrencySymbols;
 	window["AscCommon"].NumFormatType = NumFormatType;
 
 })(window);

@@ -57,6 +57,7 @@ function handleSelectedObjects(drawingObjectsController, e, x, y, group, pageInd
     }
     var selected_objects = group ? group.selectedObjects : drawingObjectsController.getSelectedObjects();
     var oCropSelection = drawingObjectsController.selection.cropSelection ? drawingObjectsController.selection.cropSelection : null;
+    var oGeometryEditSelection = drawingObjectsController.selection.geometrySelection ? drawingObjectsController.selection.geometrySelection : null;
     var tx, ty, t, hit_to_handles;
     var ret = null;
     var drawing = null;
@@ -147,7 +148,7 @@ function handleSelectedObjects(drawingObjectsController, e, x, y, group, pageInd
     {
         if(selected_objects.length === 1)
         {
-            if(window["IS_NATIVE_EDITOR"] && e.ClickCount > 1)
+            if(window["IS_NATIVE_EDITOR"] && AscFormat.isLeftButtonDoubleClick(e))
             {
                 if(selected_objects[0].getObjectType() === AscDFH.historyitem_type_Shape)
                 {
@@ -166,7 +167,7 @@ function handleSelectedObjects(drawingObjectsController, e, x, y, group, pageInd
                 ty = y;
             }
             
-            if(selected_objects[0].canChangeAdjustments())
+            if(selected_objects[0].canChangeAdjustments() && !oGeometryEditSelection)
             {
                 var hit_to_adj = selected_objects[0].hitToAdjustment(tx, ty);
                 if(hit_to_adj.hit)
@@ -206,10 +207,10 @@ function handleSelectedObjects(drawingObjectsController, e, x, y, group, pageInd
             if(!ret)
             {
                 hit_to_handles = selected_objects[i].hitToHandles(tx, ty);
-                if(hit_to_handles > -1)
+                if(hit_to_handles > -1 && !oGeometryEditSelection)
                 {
 
-                    if(window["IS_NATIVE_EDITOR"] && e.ClickCount > 1)
+                    if(window["IS_NATIVE_EDITOR"] && AscFormat.isLeftButtonDoubleClick(e))
                     {
                         if(selected_objects[i].getObjectType() === AscDFH.historyitem_type_Shape)
                         {
@@ -220,6 +221,15 @@ function handleSelectedObjects(drawingObjectsController, e, x, y, group, pageInd
                     drawing = selected_objects[i];
                     break;
                 }
+            }
+        }
+    }
+
+    if(!ret) {
+        if(oGeometryEditSelection) {
+            ret = oGeometryEditSelection.handle(drawingObjectsController, e, x, y);
+            if(ret) {
+                return ret;
             }
         }
     }
@@ -247,7 +257,7 @@ function handleSelectedObjects(drawingObjectsController, e, x, y, group, pageInd
             if(!ret)
             {
 
-                if(selected_objects[i].hitInBoundingRect(tx, ty))
+                if(selected_objects[i].hitInBoundingRect(tx, ty) && !oGeometryEditSelection)
                 {
                     if(window["IS_NATIVE_EDITOR"])
                     {
@@ -321,6 +331,7 @@ function handleFloatObjects(drawingObjectsController, drawingArr, e, x, y, group
                 break;
             }
             case AscDFH.historyitem_type_GroupShape:
+            case AscDFH.historyitem_type_SmartArt:
             {
                 ret = handleGroup(drawing, drawingObjectsController, e, x, y, group, pageIndex, bWord);
                 break;
@@ -429,7 +440,7 @@ function handleShapeImage(drawing, drawingObjectsController, e, x, y, group, pag
     {
         if(drawing.getObjectType() === AscDFH.historyitem_type_Shape && drawing.getDocContent && drawing.getDocContent())
         {
-            if(e.ClickCount > 1 && !e.ShiftKey && !e.CtrlKey && ((drawingObjectsController.selection.groupSelection && drawingObjectsController.selection.groupSelection.selectedObjects.length === 1) || drawingObjectsController.selectedObjects.length === 1))
+            if(AscFormat.isLeftButtonDoubleClick(e) && !e.ShiftKey && !e.CtrlKey && ((drawingObjectsController.selection.groupSelection && drawingObjectsController.selection.groupSelection.selectedObjects.length === 1) || drawingObjectsController.selectedObjects.length === 1))
             {
                 if(!hit_in_text_rect && (hit_in_inner_area || hit_in_path))
                 {
@@ -1174,14 +1185,14 @@ function handleChartElements(drawing, drawingObjectsController, e, dTx, dTy, gro
         if(!bSeries)
         {
 			j = 0;
-			if(Array.isArray(t.catAxisChart))
+			if(Array.isArray(t.axesChart))
 			{
-				for(j = 0; j < t.catAxisChart.length; ++j)
+				for(j = 0; j < t.axesChart.length; ++j)
 				{
-					var oAxObj = t.catAxisChart[j];
+					var oAxObj = t.axesChart[j];
 					if(oAxObj && oAxObj.paths)
 					{
-						if(oAxObj.catAx && oAxObj.catAx.compiledMajorGridLines && oAxObj.catAx.compiledMajorGridLines.isVisible()
+						if(oAxObj.axis && oAxObj.axis.compiledMajorGridLines && oAxObj.axis.compiledMajorGridLines.isVisible()
 							&& AscFormat.isRealNumber(oAxObj.paths.gridLines))//TODo Date Ax vehicle log book1.xlsx
 						{
 							var oPath = drawing.pathMemory.GetPath(oAxObj.paths.gridLines);
@@ -1191,12 +1202,12 @@ function handleChartElements(drawing, drawingObjectsController, e, dTx, dTy, gro
 								selector.resetSelection();
 								selector.selectObject(drawing, pageIndex);
 								selector.selection.chartSelection = drawing;
-								drawing.selection.axis = oAxObj.catAx;
+								drawing.selection.axis = oAxObj.axis;
 								drawing.selection.majorGridlines = true;
 								break;
 							}
 						}
-						if(!bSeries && oAxObj.catAx && oAxObj.catAx.compiledMinorGridLines && oAxObj.catAx.compiledMinorGridLines.isVisible()
+						if(!bSeries && oAxObj.axis && oAxObj.axis.compiledMinorGridLines && oAxObj.axis.compiledMinorGridLines.isVisible()
 							&& AscFormat.isRealNumber(oAxObj.paths.minorGridLines))
 						{
 							var oPath = drawing.pathMemory.GetPath(oAxObj.paths.minorGridLines);
@@ -1206,7 +1217,7 @@ function handleChartElements(drawing, drawingObjectsController, e, dTx, dTy, gro
 								selector.resetSelection();
 								selector.selectObject(drawing, pageIndex);
 								selector.selection.chartSelection = drawing;
-								drawing.selection.axis = oAxObj.catAx;
+								drawing.selection.axis = oAxObj.axis;
 								drawing.selection.minorGridlines = true;
 								break;
 							}
@@ -1214,49 +1225,6 @@ function handleChartElements(drawing, drawingObjectsController, e, dTx, dTy, gro
 					}
 				}
 			}
-            if(!Array.isArray(t.catAxisChart) || j ===  t.catAxisChart.length)
-            {
-				if(Array.isArray(t.valAxisChart))
-				{
-					for(j = 0; j < t.valAxisChart.length; ++j)
-					{
-						var oAxObj = t.valAxisChart[j];
-						if(oAxObj && oAxObj.paths)
-						{
-							if(oAxObj.valAx.compiledMajorGridLines && oAxObj.valAx.compiledMajorGridLines.isVisible() &&
-								AscFormat.isRealNumber(oAxObj.paths.gridLines))
-							{
-								var oPath = drawing.pathMemory.GetPath(oAxObj.paths.gridLines);
-								if(oPath.hitInPath(oCanvas, dTx, dTy))
-								{
-									bSeries = true;
-									selector.resetSelection();
-									selector.selectObject(drawing, pageIndex);
-									selector.selection.chartSelection = drawing;
-									drawing.selection.axis = oAxObj.valAx;
-									drawing.selection.majorGridlines = true;
-									break;
-								}
-							}
-							if(!bSeries && oAxObj.valAx.compiledMinorGridLines && oAxObj.valAx.compiledMinorGridLines.isVisible() &&
-								AscFormat.isRealNumber(oAxObj.paths.minorGridLines))
-							{
-								var oPath = drawing.pathMemory.GetPath(oAxObj.paths.minorGridLines);
-								if(oPath.hitInPath(oCanvas, dTx, dTy))
-								{
-									bSeries = true;
-									selector.resetSelection();
-									selector.selectObject(drawing, pageIndex);
-									selector.selection.chartSelection = drawing;
-									drawing.selection.axis = oAxObj.valAx;
-									drawing.selection.minorGridlines = true;
-									break;
-								}
-							}
-						}
-					}
-				}
-            }
         }
     }
     return bSeries;
@@ -1917,7 +1885,7 @@ function handleInlineHitNoText(drawing, drawingObjects, e, x, y, pageIndex, bInS
             drawingObjects.resetSelection();
             drawing.select(drawingObjects, pageIndex);
             drawingObjects.changeCurrentState(new AscFormat.PreMoveInlineObject(drawingObjects, drawing, bIsSelected, !bInSelect, pageIndex, x, y));
-            if(e.ClickCount > 1 && !e.ShiftKey && !e.CtrlKey && ((drawingObjects.selection.groupSelection && drawingObjects.selection.groupSelection.selectedObjects.length === 1) || drawingObjects.selectedObjects.length === 1))
+            if(AscFormat.isLeftButtonDoubleClick(e) && !e.ShiftKey && !e.CtrlKey && ((drawingObjects.selection.groupSelection && drawingObjects.selection.groupSelection.selectedObjects.length === 1) || drawingObjects.selectedObjects.length === 1))
             {
                 if (drawing.getObjectType() === AscDFH.historyitem_type_ChartSpace && drawingObjects.handleChartDoubleClick)
                     drawingObjects.handleChartDoubleClick(drawing.parent, drawing, e, x, y, pageIndex);
@@ -1986,6 +1954,7 @@ function handleInlineObjects(drawingObjectsController, drawingArr, e, x, y, page
                 break;
             }
             case AscDFH.historyitem_type_GroupShape:
+            case AscDFH.historyitem_type_SmartArt:
             {
                 ret = handleGroup(drawing, drawingObjectsController, e, x, y, null, pageIndex, bWord);
                 if(ret)
@@ -2003,11 +1972,12 @@ function handleMouseUpPreMoveState(drawingObjects, e, x, y, pageIndex, bWord)
     state.drawingObjects.clearPreTrackObjects();
     state.drawingObjects.changeCurrentState(new AscFormat.NullState(state.drawingObjects));
     var bHandle = false;
-    if(!state.shift && !state.ctrl && state.bInside && state.majorObjectIsSelected && e.Button !== AscCommon.g_mouse_button_right)
+    if(!state.shift && /*!state.ctrl &&*/ state.bInside && state.majorObjectIsSelected && e.Button !== AscCommon.g_mouse_button_right)
     {
         switch (state.majorObject.getObjectType())
         {
             case AscDFH.historyitem_type_GroupShape:
+            case AscDFH.historyitem_type_SmartArt:
             {
                 state.drawingObjects.checkChartTextSelection();
                 state.drawingObjects.resetSelection();
@@ -2049,9 +2019,7 @@ function handleMouseUpPreMoveState(drawingObjects, e, x, y, pageIndex, bWord)
     }
     if(!bHandle)
     {
-
-
-        if(e.CtrlKey && state.majorObjectIsSelected)
+        if(e.CtrlKey && state.majorObjectIsSelected && !state.bGroupSelection)
         {
             drawingObjects.deselectObject(state.majorObject);
             state.drawingObjects.drawingObjects && state.drawingObjects.drawingObjects.sendGraphicObjectProps &&  state.drawingObjects.drawingObjects.sendGraphicObjectProps();

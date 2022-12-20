@@ -52,6 +52,7 @@
     if (options) {
       this.onAuthParticipantsChanged = options.onAuthParticipantsChanged;
       this.onParticipantsChanged = options.onParticipantsChanged;
+      this.onParticipantsChangedOrigin = options.onParticipantsChangedOrigin;
       this.onMessage = options.onMessage;
       this.onServerVersion = options.onServerVersion;
       this.onCursor =  options.onCursor;
@@ -70,6 +71,7 @@
       this.onSetIndexUser = options.onSetIndexUser;
       this.onSpellCheckInit = options.onSpellCheckInit;
       this.onSaveChanges = options.onSaveChanges;
+      this.onChangesIndex = options.onChangesIndex;
       this.onStartCoAuthoring = options.onStartCoAuthoring;
       this.onEndCoAuthoring = options.onEndCoAuthoring;
       this.onUnSaveLock = options.onUnSaveLock;
@@ -89,6 +91,9 @@
       };
       this._CoAuthoringApi.onParticipantsChanged = function(e) {
         t.callback_OnParticipantsChanged(e);
+      };
+      this._CoAuthoringApi.onParticipantsChangedOrigin = function(e) {
+        t.callback_OnParticipantsChangedOrigin(e);
       };
       this._CoAuthoringApi.onMessage = function(e, clear) {
         t.callback_OnMessage(e, clear);
@@ -129,8 +134,8 @@
       this._CoAuthoringApi.onWarning = function(e) {
         t.callback_OnWarning(e);
       };
-      this._CoAuthoringApi.onFirstLoadChangesEnd = function() {
-        t.callback_OnFirstLoadChangesEnd();
+      this._CoAuthoringApi.onFirstLoadChangesEnd = function(openedAt) {
+        t.callback_OnFirstLoadChangesEnd(openedAt);
       };
       this._CoAuthoringApi.onConnectionStateChanged = function(e) {
         t.callback_OnConnectionStateChanged(e);
@@ -143,6 +148,9 @@
       };
       this._CoAuthoringApi.onSaveChanges = function(e, userId, bFirstLoad) {
         t.callback_OnSaveChanges(e, userId, bFirstLoad);
+      };
+      this._CoAuthoringApi.onChangesIndex = function(changesIndex) {
+        t.callback_OnChangesIndex(changesIndex);
       };
       // Callback есть пользователей больше 1
       this._CoAuthoringApi.onStartCoAuthoring = function(e, isWaitAuth) {
@@ -244,6 +252,11 @@
     }
   };
 
+  CDocsCoApi.prototype.sendClientLog = function(level, msg) {
+    if (this._CoAuthoringApi && this._onlineWork) {
+      this._CoAuthoringApi.sendClientLog(level, msg);
+    }
+  };
   CDocsCoApi.prototype.sendCursor = function(cursor) {
     if (this._CoAuthoringApi && this._onlineWork) {
       this._CoAuthoringApi.sendCursor(cursor);
@@ -329,7 +342,21 @@
     }
     return null;
   };
+
+  CDocsCoApi.prototype.getParticipantName = function(userId) {
+    if (this._CoAuthoringApi && this._onlineWork) {
+      return this._CoAuthoringApi.getParticipantName(userId);
+    }
+    return "";
+  };
   
+  CDocsCoApi.prototype.get_serverChangesSize = function() {
+    if (this._CoAuthoringApi && this._onlineWork) {
+      return this._CoAuthoringApi.get_serverChangesSize();
+    }
+    return 0;
+  };
+
   CDocsCoApi.prototype.get_indexUser = function() {
     if (this._CoAuthoringApi && this._onlineWork) {
       return this._CoAuthoringApi.get_indexUser();
@@ -397,6 +424,12 @@
   CDocsCoApi.prototype.callback_OnParticipantsChanged = function(e) {
     if (this.onParticipantsChanged) {
       this.onParticipantsChanged(e);
+    }
+  };
+
+  CDocsCoApi.prototype.callback_OnParticipantsChangedOrigin = function(e) {
+    if (this.onParticipantsChangedOrigin) {
+      this.onParticipantsChangedOrigin(e);
     }
   };
 
@@ -483,9 +516,9 @@
     }
   };
 
-  CDocsCoApi.prototype.callback_OnFirstLoadChangesEnd = function() {
+  CDocsCoApi.prototype.callback_OnFirstLoadChangesEnd = function(openedAt) {
     if (this.onFirstLoadChangesEnd) {
-      this.onFirstLoadChangesEnd();
+      this.onFirstLoadChangesEnd(openedAt);
     }
   };
 
@@ -509,6 +542,11 @@
   CDocsCoApi.prototype.callback_OnSaveChanges = function(e, userId, bFirstLoad) {
     if (this.onSaveChanges) {
       this.onSaveChanges(e, userId, bFirstLoad);
+    }
+  };
+  CDocsCoApi.prototype.callback_OnChangesIndex = function(changesIndex) {
+    if (this.onChangesIndex) {
+      this.onChangesIndex(changesIndex);
     }
   };
   CDocsCoApi.prototype.callback_OnStartCoAuthoring = function(e, isWaitAuth) {
@@ -563,6 +601,7 @@
     if (options) {
       this.onAuthParticipantsChanged = options.onAuthParticipantsChanged;
       this.onParticipantsChanged = options.onParticipantsChanged;
+      this.onParticipantsChangedOrigin = options.onParticipantsChangedOrigin;
       this.onMessage = options.onMessage;
       this.onServerVersion = options.onServerVersion;
       this.onCursor = options.onCursor;
@@ -580,6 +619,7 @@
       this.onSetIndexUser = options.onSetIndexUser;
       this.onSpellCheckInit = options.onSpellCheckInit;
       this.onSaveChanges = options.onSaveChanges;
+      this.onChangesIndex = options.onChangesIndex;
       this.onFirstLoadChangesEnd = options.onFirstLoadChangesEnd;
       this.onConnectionStateChanged = options.onConnectionStateChanged;
       this.onUnSaveLock = options.onUnSaveLock;
@@ -623,6 +663,7 @@
     //xhr payload size is limited by nginx param client_max_body_size (current 100MB)
     //"1.5MB" is choosen to avoid disconnect(after 25s) while downloading/uploading oversized changes with 0.5Mbps connection
     this.websocketMaxPayloadSize = 1572864;
+    this._serverChangesSize = 0;
     // Текущий индекс для колличества изменений
     this.currentIndex = 0;
     this.currentIndexEnd = 0;
@@ -671,9 +712,11 @@
     this.jwtSession = undefined;
     this.encrypted = undefined;
     this.IsAnonymousUser = undefined;
+    this.coEditingMode = undefined;
     this._isViewer = false;
     this._isReSaveAfterAuth = false;	// Флаг для сохранения после повторной авторизации (для разрыва соединения во время сохранения)
     this._lockBuffer = [];
+    this._saveChangesChunks = [];
     this._authChanges = [];
     this._authOtherChanges = [];
   }
@@ -699,6 +742,10 @@
     return this._indexUser;
   };
 
+  DocsCoApi.prototype.get_serverChangesSize = function() {
+    return this._serverChangesSize;
+  };
+
   DocsCoApi.prototype.get_isAuth = function() {
     return this._isAuth;
   };
@@ -713,6 +760,12 @@
 
   DocsCoApi.prototype.getUserConnectionId = function() {
     return this._userId;
+  };
+
+  DocsCoApi.prototype.getParticipantName = function(userId) {
+  	if (this._participants[userId])
+      return this._participants[userId].asc_getUserName();
+    return "";
   };
 
   DocsCoApi.prototype.getLocks = function() {
@@ -866,7 +919,7 @@
     startIndex = endIndex = this.currentIndex;
     var curBytes = 0;
     for (; endIndex < arrayChanges.length && curBytes < this.websocketMaxPayloadSize; ++endIndex) {
-      curBytes += arrayChanges[endIndex].length + 9;//9 - for JSON overhead + escape
+      curBytes += arrayChanges[endIndex].length;
     }
     this.currentIndexEnd = endIndex;
     if (endIndex === arrayChanges.length) {
@@ -886,6 +939,9 @@
 
     // Выставляем состояние сохранения
     this._state = ConnectionState.SaveChanges;
+    if (!reSave) {
+      this._serverChangesSize += curBytes;
+    }
 
     this._send({'type': 'saveChanges', 'changes': JSON.stringify(arrayChanges.slice(startIndex, endIndex)),
       'startSaveChanges': (startIndex === 0), 'endSaveChanges': (endIndex === arrayChanges.length),
@@ -975,6 +1031,10 @@
     if (typeof message === 'string') {
       this._send({"type": "message", "message": message});
     }
+  };
+
+  DocsCoApi.prototype.sendClientLog = function(level, msg) {
+    this._send({'type': 'clientLog', 'level': level, 'msg': msg});
   };
 
   DocsCoApi.prototype.sendCursor = function(cursor) {
@@ -1174,6 +1234,16 @@
       }
       return;
     }
+    if (!data["endSaveChanges"]) {
+      this._saveChangesChunks.push(data["changes"]);
+      return;
+    } else if(this._saveChangesChunks.length > 0){
+      this._saveChangesChunks.push(data["changes"]);
+      var newChanges = [];
+      data["changes"] = newChanges.concat.apply(newChanges, this._saveChangesChunks);
+      this._saveChangesChunks = [];
+    }
+
     if (!useEncryption && AscCommon.EncryptionWorker && AscCommon.EncryptionWorker.isInit())
       return AscCommon.EncryptionWorker.sendChanges(this, data, AscCommon.EncryptionMessageType.Decrypt);
     if (data["locks"]) {
@@ -1294,10 +1364,12 @@
             if (change['user'] !== this._userId) {
               this.lastOtherSaveTime = change['time'];
             }
+            this._serverChangesSize += changesOneUser.length;
             this.onSaveChanges(JSON.parse(changesOneUser), change['useridoriginal'], bFirstLoad);
           }
         }
       }
+      this.onChangesIndex(changesIndex);
     }
   };
 
@@ -1401,6 +1473,7 @@
       if (this.onAuthParticipantsChanged) {
         this.onAuthParticipantsChanged(this._participants, this._userId);
       }
+      this.onParticipantsChangedOrigin(participants);
 
       // Посылаем эвент о совместном редактировании
       if (1 < this._countEditUsers) {
@@ -1432,6 +1505,8 @@
       this._participantsTimestamp = data['participantsTimestamp'];
       usersStateChanged = this._onParticipantsChanged(data['participants'], true);
 
+      this.onParticipantsChangedOrigin(data['participants']);
+
       if (isWaitAuth && !(usersStateChanged.length > 0 && 1 < this._countEditUsers)) {
         var errorMsg = 'Error: connection state changed waitAuth' +
             ';usersStateChanged:' + JSON.stringify(usersStateChanged) +
@@ -1455,7 +1530,7 @@
   };
 
   DocsCoApi.prototype._onLicenseChanged = function (data) {
-    this.onLicenseChanged(data['licenseType']);
+    this.onLicenseChanged(data);
   };
 
   DocsCoApi.prototype._onDrop = function(data) {
@@ -1559,7 +1634,7 @@
       this._updateAuthChanges();
       // Посылать нужно всегда, т.к. на это рассчитываем при открытии
       if (this.onFirstLoadChangesEnd) {
-        this.onFirstLoadChangesEnd();
+        this.onFirstLoadChangesEnd(data['openedAt']);
       }
 
       //Apply prebuffered
@@ -1572,6 +1647,7 @@
   };
   DocsCoApi.prototype._onAuthChanges = function(data) {
     this._authChanges.push(data["changes"]);
+    this._send({'type': 'authChangesAck'});
   };
   DocsCoApi.prototype._updateAuthChanges = function() {
     //todo apply changes with chunk on arrival
@@ -1616,6 +1692,7 @@
 	this.jwtOpen = docInfo.get_Token();
     this.encrypted = docInfo.get_Encrypted();
     this.IsAnonymousUser = docInfo.get_IsAnonymousUser();
+    this.coEditingMode = docInfo.asc_getCoEditingMode();
 
     this.setDocId(docid);
     this._initSocksJs();
@@ -1670,8 +1747,11 @@
       'permissions': this.permissions,
       'encrypted': this.encrypted,
       'IsAnonymousUser': this.IsAnonymousUser,
+      'timezoneOffset': (new Date()).getTimezoneOffset(),
+      'coEditingMode': this.coEditingMode,
       'jwtOpen': this.jwtOpen,
-      'jwtSession': this.jwtSession
+      'jwtSession': this.jwtSession,
+      'supportAuthChangesAck': true
     });
   };
 

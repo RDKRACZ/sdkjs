@@ -147,6 +147,7 @@ CCollaborativeEditing.prototype.Send_Changes = function(IsUserSave, AdditionalIn
 					|| Class.getObjectType() === AscDFH.historyitem_type_ImageShape
 					|| Class.getObjectType() === AscDFH.historyitem_type_GroupShape
 					|| Class.getObjectType() === AscDFH.historyitem_type_GraphicFrame
+					|| Class.getObjectType() === AscDFH.historyitem_type_SmartArt
 					|| Class.getObjectType() === AscDFH.historyitem_type_ChartSpace
 					|| Class.getObjectType() === AscDFH.historyitem_type_OleObject
 					|| Class.getObjectType() === AscDFH.historyitem_type_Cnx) && AscCommon.isRealObject(Class.parent))
@@ -492,6 +493,9 @@ CCollaborativeEditing.prototype.OnCallback_AskLock = function(result)
             if ( true === editor.isChartEditor )
                 editor.sync_closeChartEditor();
 
+            if ( true === editor.isOleEditor )
+              editor.sync_closeOleEditor();
+
             // Делаем откат на 1 шаг назад и удаляем из Undo/Redo эту последнюю точку
             editor.WordControl.m_oLogicDocument.Document_Undo();
             AscCommon.History.Clear_Redo();
@@ -499,6 +503,7 @@ CCollaborativeEditing.prototype.OnCallback_AskLock = function(result)
 
     }
     editor.isChartEditor = false;
+    editor.isOleEditor = false;
 };
 
 CCollaborativeEditing.prototype.AddPosExtChanges = function(Item, ChangeObject)
@@ -608,7 +613,7 @@ CCollaborativeEditing.prototype.Update_ForeignCursorPosition = function(UserId, 
         DrawingDocument.Collaborative_RemoveTarget(UserId);
         return;
     }
-    ParaContentPos.Update(InRunPos, ParaContentPos.Get_Depth() + 1);
+    ParaContentPos.Update(InRunPos, ParaContentPos.GetDepth() + 1);
     var XY = Paragraph.Get_XYByContentPos(ParaContentPos);
     if (XY && XY.Height > 0.001){
         var ShortId = this.m_aForeignCursorsId[UserId] ? this.m_aForeignCursorsId[UserId] : UserId;

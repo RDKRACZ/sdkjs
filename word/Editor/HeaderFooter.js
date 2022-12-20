@@ -35,35 +35,25 @@
 // Import
 var hdrftr_Header = AscCommon.hdrftr_Header;
 var hdrftr_Footer = AscCommon.hdrftr_Footer;
-var g_oTableId = AscCommon.g_oTableId;
 var History = AscCommon.History;
 
 //-----------------------------------------------------------------------------------
 // Класс работающий с одним колонтитулом
 //-----------------------------------------------------------------------------------
-function CHeaderFooter(Parent, LogicDocument, DrawingDocument, Type)
+function CHeaderFooter(Parent, oLogicDocument, DrawingDocument, Type)
 {
     this.Id = AscCommon.g_oIdCounter.Get_NewId();
 
     this.Parent          = Parent;
     this.DrawingDocument = DrawingDocument;
-    this.LogicDocument   = LogicDocument;
+    this.LogicDocument   = oLogicDocument;
 
-    // Содержимое колонтитула
-
-    if ( "undefined" != typeof(LogicDocument) && null != LogicDocument )
-    {
-        if ( Type === hdrftr_Header )
-        {
-            this.Content = new CDocumentContent( this, DrawingDocument, 0, 0, 0, 0, false, true );
-            this.Content.Content[0].Style_Add( this.Get_Styles().Get_Default_Header() );
-        }
-        else
-        {
-            this.Content = new CDocumentContent( this, DrawingDocument, 0, 0, 0, 0, false, true );
-            this.Content.Content[0].Style_Add( this.Get_Styles().Get_Default_Footer() );
-        }
-    }
+    if (oLogicDocument)
+	{
+		let sStyleId = Type === hdrftr_Header ? oLogicDocument.GetStyles().Get_Default_Header() : oLogicDocument.GetStyles().Get_Default_Footer();
+		this.Content = new CDocumentContent(this, DrawingDocument, 0, 0, 0, 0, false, true);
+		this.Content.Content[0].SetParagraphStyleById(sStyleId);
+	}
 
     this.Type = Type;
 
@@ -81,7 +71,7 @@ function CHeaderFooter(Parent, LogicDocument, DrawingDocument, Type)
 	this.PageCountElements = [];
 
     // Добавляем данный класс в таблицу Id (обязательно в конце конструктора)
-    g_oTableId.Add( this, this.Id );
+    AscCommon.g_oTableId.Add( this, this.Id );
 }
 
 CHeaderFooter.prototype =
@@ -211,6 +201,7 @@ CHeaderFooter.prototype =
         this.Content.PrepareRecalculateObject();
 
 		this.Clear_PageCountElements();
+		this.LogicDocument.GetDrawingObjects().resetHdrFtrDrawingArrays(Page_abs);
 
         var CurPage = 0;
         var RecalcResult = recalcresult2_NextPage;
@@ -411,7 +402,7 @@ CHeaderFooter.prototype =
         }
     },
 
-    Is_ThisElementCurrent : function()
+	IsThisElementCurrent : function()
     {
         if (this === this.Parent.CurHdrFtr && docpostype_HdrFtr === this.LogicDocument.GetDocPosType())
             return true;
@@ -427,12 +418,6 @@ CHeaderFooter.prototype =
     Draw : function(nPageIndex, pGraphics)
     {
         this.Content.Draw( nPageIndex, pGraphics );
-    },
-
-    // Пришло сообщение о том, что контент изменился и пересчитался
-    OnContentRecalculate : function(bChange, bForceRecalc)
-    {
-        return;
     },
 
     OnContentReDraw : function(StartPage, EndPage)
@@ -578,10 +563,10 @@ CHeaderFooter.prototype =
 		return this.Content.IsTextSelectionUse();
 	},
 
-    Is_UseInDocument : function(Id)
+	IsUseInDocument : function(Id)
     {
         if ( null != this.Parent )
-            return this.Parent.Is_UseInDocument(this.Get_Id());
+            return this.Parent.IsUseInDocument(this.Get_Id());
 
         return false;
     },
@@ -767,9 +752,9 @@ CHeaderFooter.prototype =
         this.Content.AddSignatureLine(oSignatureDrawing);
     },
 
-	AddOleObject : function(W, H, nWidthPix, nHeightPix, Img, Data, sApplicationId)
+	AddOleObject : function(W, H, nWidthPix, nHeightPix, Img, Data, sApplicationId, bSelect, arrImagesForAddToHistory)
     {
-        this.Content.AddOleObject(W, H, nWidthPix, nHeightPix, Img, Data, sApplicationId);
+        this.Content.AddOleObject(W, H, nWidthPix, nHeightPix, Img, Data, sApplicationId, bSelect, arrImagesForAddToHistory);
     },
 
 	AddTextArt : function(nStyle)
@@ -1317,7 +1302,7 @@ CHeaderFooter.prototype =
         this.Id      = Reader.GetString2();
         this.Type    = Reader.GetLong();
 
-        this.Content = g_oTableId.Get_ById( Reader.GetString2() );        
+        this.Content = AscCommon.g_oTableId.Get_ById( Reader.GetString2() );
     },
 //-----------------------------------------------------------------------------------
 // Функции для работы с комментариями
@@ -1331,6 +1316,17 @@ CHeaderFooter.prototype =
 	{
 		return this.Content.CanAddComment();
 	}
+};
+CHeaderFooter.prototype.UpdateContentToDefaults = function()
+{
+	this.Content.ClearContent(true);
+	let oParagraph     = this.Content.GetElement(0);
+	let oLogicDocument = this.LogicDocument;
+	if (!oLogicDocument || !oParagraph || !oParagraph.IsParagraph())
+		return;
+
+	let sStyleId = this.Type === hdrftr_Header ? oLogicDocument.GetStyles().Get_Default_Header() : oLogicDocument.GetStyles().Get_Default_Footer();
+	oParagraph.SetParagraphStyleById(sStyleId);
 };
 CHeaderFooter.prototype.GetSectionIndex = function()
 {
@@ -1445,6 +1441,23 @@ CHeaderFooter.prototype.GetAllTablesOnPage = function(nPageAbs, arrTables)
 	this.Set_Page(nPageAbs);
 	return this.Content.GetAllTablesOnPage(nPageAbs, arrTables);
 };
+CHeaderFooter.prototype.RestartSpellCheck = function()
+{
+	this.Content.RestartSpellCheck();
+};
+//----------------------------------------------------------------------------------------------------------------------
+// CHeaderFooter
+//----------------------------------------------------------------------------------------------------------------------
+CHeaderFooter.prototype.Search = function(oSearchEngine, nType)
+{
+	this.Content.Search(oSearchEngine, nType);
+};
+CHeaderFooter.prototype.GetSearchElementId = function(bNext, bCurrent)
+{
+	return this.Content.GetSearchElementId( bNext, bCurrent );
+};
+//----------------------------------------------------------------------------------------------------------------------
+
 
 //-----------------------------------------------------------------------------------
 // Класс для работы с колонтитулами
@@ -1468,7 +1481,7 @@ function CHeaderFooterController(LogicDocument, DrawingDocument)
     this.Lock = new AscCommon.CLock();   
 
     // Добавляем данный класс в таблицу Id (обязательно в конце конструктора)
-    g_oTableId.Add( this, this.Id );
+    AscCommon.g_oTableId.Add( this, this.Id );
 }
 
 CHeaderFooterController.prototype =
@@ -1616,7 +1629,7 @@ CHeaderFooterController.prototype =
 
     Set_CurHdrFtr_ById : function(Id)
     {
-        var HdrFtr = g_oTableId.Get_ById( Id );
+        var HdrFtr = AscCommon.g_oTableId.Get_ById( Id );
         if ( -1 === this.LogicDocument.SectionsInfo.Find_ByHdrFtr( HdrFtr ) )
             return false;
         
@@ -1962,9 +1975,9 @@ CHeaderFooterController.prototype =
 		return false;
 	},
 
-	Is_UseInDocument : function(Id)
+	IsUseInDocument : function(Id)
 	{
-		var HdrFtr = g_oTableId.Get_ById(Id);
+		var HdrFtr = AscCommon.g_oTableId.Get_ById(Id);
 		if (-1 === this.LogicDocument.SectionsInfo.Find_ByHdrFtr(HdrFtr))
 			return false;
 
@@ -2034,10 +2047,10 @@ CHeaderFooterController.prototype =
             return this.CurHdrFtr.AddSignatureLine(oSignatureDrawing);
     },
 
-	AddOleObject: function(W, H, nWidthPix, nHeightPix, Img, Data, sApplicationId)
+	AddOleObject: function(W, H, nWidthPix, nHeightPix, Img, Data, sApplicationId, bSelect, arrImagesForAddToHistory)
     {
         if ( null != this.CurHdrFtr )
-            return this.CurHdrFtr.AddOleObject(W, H, nWidthPix, nHeightPix, Img, Data, sApplicationId);
+            return this.CurHdrFtr.AddOleObject(W, H, nWidthPix, nHeightPix, Img, Data, sApplicationId, bSelect, arrImagesForAddToHistory);
     },
 
 	AddTextArt : function(nStyle)
@@ -2763,6 +2776,11 @@ CHeaderFooterController.prototype.Set_CurHdrFtr = function(HdrFtr)
 
     this.CurHdrFtr = HdrFtr;
 };
+CHeaderFooterController.prototype.GetHdrFtr = function(nPageAbs, isHeader)
+{
+	let oPage = this.Pages[nPageAbs];
+	return oPage ? (isHeader ? oPage.Header : oPage.Footer) : null;
+};
 CHeaderFooterController.prototype.RecalculatePageCountUpdate = function(nPageAbs, nPageCount)
 {
 	var oPage = this.Pages[nPageAbs];
@@ -2883,6 +2901,12 @@ CHeaderFooterController.prototype.GetAllTablesOnPage = function(nPageAbs, arrTab
 
 	return arrTables;
 };
+CHeaderFooterController.prototype.CollectSelectedReviewChanges = function(oTrackManager)
+{
+	if (this.CurHdrFtr)
+		this.CurHdrFtr.GetContent().CollectSelectedReviewChanges(oTrackManager);
+};
+
 
 
 function CHdrFtrPage()

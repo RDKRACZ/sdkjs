@@ -37,37 +37,7 @@
 // Import
 var CShape = AscFormat.CShape;
 
-var G_O_DEFAULT_COLOR_MAP = AscFormat.GenerateDefaultColorMap();
-
-var pHText = [];
-pHText[0] = [];//rus         ""                                                          ;
-pHText[0][AscFormat.phType_body]  =    "Slide text";             //"Текст слайда" ;                              ;
-pHText[0][AscFormat.phType_chart]    = "Chart";         // "Диаграмма" ;                                     ;
-pHText[0][AscFormat.phType_clipArt]  = "Clip Art";// "Текст слайда" ; //(Clip Art)                   ;
-pHText[0][AscFormat.phType_ctrTitle] = "Slide title";// "Заголовок слайда" ; //(Centered Title)     ;
-pHText[0][AscFormat.phType_dgm]      = "Diagram";// "Диаграмма";// (Diagram)                        ;
-pHText[0][AscFormat.phType_dt]       = "Date and time";// "Дата и время";// (Date and Time)         ;
-pHText[0][AscFormat.phType_ftr]      = "Footer";// "Нижний колонтитул";// (Footer)                  ;
-pHText[0][AscFormat.phType_hdr]      = "Header";// "Верхний колонтитул"; //(Header)                 ;
-pHText[0][AscFormat.phType_media]    = "Media";// "Текст слайда"; //(Media)                         ;
-pHText[0][AscFormat.phType_obj]      = "Slide text";// "Текст слайда"; //(Object)                   ;
-pHText[0][AscFormat.phType_pic]      = "Picture";// "Вставка рисунка"; //(Picture)                  ;
-pHText[0][AscFormat.phType_sldImg]   = "Image";// "Вставка рисунка"; //(Slide Image)                ;
-pHText[0][AscFormat.phType_sldNum]   = "Slide number";// "Номер слайда"; //(Slide Number)           ;
-pHText[0][AscFormat.phType_subTitle] = "Slide subtitle";// "Подзаголовок слайда"; //(Subtitle)      ;
-pHText[0][AscFormat.phType_tbl]      = "Table";// "Таблица"; //(Table)                              ;
-pHText[0][AscFormat.phType_title]    = "Slide title";// "Заголовок слайда" ;  //(Title)             ;
-
-AscFormat.checkPlaceholdersText = function()
-{
-    if (AscFonts.IsCheckSymbols)
-    {
-        for (var i = pHText[0].length - 1; i >= 0; i--)
-            AscFonts.FontPickerByCharacter.getFontsByString(AscCommon.translateManager.getValue(pHText[0][i]));
-    }
-};
-
-CShape.prototype.Is_UseInDocument = function(drawingObjects)
+CShape.prototype.IsUseInDocument = function(drawingObjects)
 {
     if(this.group)
     {
@@ -76,7 +46,7 @@ CShape.prototype.Is_UseInDocument = function(drawingObjects)
         {
             if(aSpTree[i] === this)
             {
-                return this.group.Is_UseInDocument();
+                return this.group.IsUseInDocument();
             }
         }
         return false;
@@ -102,48 +72,47 @@ CShape.prototype.getDrawingObjectsController = function()
 };
 
 
-CShape.prototype.addToDrawingObjects =  function(pos)
+function editorAddToDrawingObjects(oGraphicObject, pos, type)
 {
-    if(this.parent && this.parent.cSld && this.parent.cSld.spTree)
+    if(oGraphicObject.parent && oGraphicObject.parent.cSld && oGraphicObject.parent.cSld.spTree)
     {
-        if(this.signatureLine && this.setSignature)
+        if(oGraphicObject.signatureLine && oGraphicObject.setSignature)
         {
-            this.setSignature(null);
+            oGraphicObject.setSignature(null);
         }
-        this.parent.shapeAdd(pos, this);
+        oGraphicObject.parent.shapeAdd(pos, oGraphicObject);
     }
-};
-
-
-CShape.prototype.deleteDrawingBase = function(bCheckPlaceholder)
-{
-    if(this.parent && this.parent.cSld && this.parent.cSld.spTree)
+}
+    function editorDeleteDrawingBase(oGraphicObject, bCheckPlaceholder)
     {
-        var pos = this.parent.removeFromSpTreeById(this.Id);
-        var phType = this.getPlaceholderType();
-        if(bCheckPlaceholder && this.isPlaceholder() && !this.isEmptyPlaceholder()
-            && phType !== AscFormat.phType_hdr && phType !== AscFormat.phType_ftr
-            && phType !== AscFormat.phType_sldNum && phType !== AscFormat.phType_dt )
+        let oSlide = oGraphicObject.parent;
+        if(oSlide && oSlide.cSld && oSlide.cSld.spTree)
         {
-            var hierarchy = this.getHierarchy();
-            if(hierarchy[0])
+            var pos = oSlide.removeFromSpTreeById(oGraphicObject.Id);
+            var phType = oGraphicObject.getPlaceholderType();
+            if(bCheckPlaceholder && oGraphicObject.isPlaceholder() && !oGraphicObject.isEmptyPlaceholder()
+                && phType !== AscFormat.phType_hdr && phType !== AscFormat.phType_ftr
+                && phType !== AscFormat.phType_sldNum && phType !== AscFormat.phType_dt )
             {
-                var copy = hierarchy[0].copy(undefined);
-                copy.setParent(this.parent);
-                copy.addToDrawingObjects(pos);
-                var doc_content = copy.getDocContent && copy.getDocContent();
-                if(doc_content)
+                var hierarchy = oGraphicObject.getHierarchy();
+                if(hierarchy[0])
                 {
-                    doc_content.SetApplyToAll(true);
-                    doc_content.Remove(-1);
-                    doc_content.SetApplyToAll(false);
+                    var copy = hierarchy[0].copy(undefined);
+                    copy.setParent(oSlide);
+                    copy.addToDrawingObjects(pos);
+                    var doc_content = copy.getDocContent && copy.getDocContent();
+                    if(doc_content)
+                    {
+                        doc_content.SetApplyToAll(true);
+                        doc_content.Remove(-1);
+                        doc_content.SetApplyToAll(false);
+                    }
                 }
             }
+            return pos;
         }
-        return pos;
+        return -1;
     }
-    return -1;
-};
 
 CShape.prototype.setRecalculateInfo = function()
 {
@@ -267,7 +236,7 @@ CShape.prototype.handleUpdateTheme = function()
 
     if(this.isPlaceholder()
         && !( this.spPr && this.spPr.xfrm &&
-        (this.getObjectType() === AscDFH.historyitem_type_GroupShape && this.spPr.xfrm.isNotNullForGroup() || this.getObjectType() !== AscDFH.historyitem_type_GroupShape && this.spPr.xfrm.isNotNull() ) ))
+        (this.isGroupObject && this.isGroupObject() && this.spPr.xfrm.isNotNullForGroup() || this.getObjectType() !== AscDFH.historyitem_type_GroupShape && this.spPr.xfrm.isNotNull() ) ))
     {
         this.recalcTransform();
         this.recalcGeometry()
@@ -521,6 +490,7 @@ CShape.prototype.recalculate = function ()
 CShape.prototype.recalculateBounds = function()
 {
     var boundsChecker = new  AscFormat.CSlideBoundsChecker();
+    boundsChecker.DO_NOT_DRAW_ANIM_LABEL = true;
     this.draw(boundsChecker);
     boundsChecker.CorrectBounds();
 
@@ -585,150 +555,6 @@ CShape.prototype.recalculateContent = function()
     return null;
 };
 
-CShape.prototype.recalculateContent2 = function()
-{
-    if(this.txBody)
-    {
-        if(this.isPlaceholder())
-        {
-            if(!this.isEmptyPlaceholder())
-            {
-                return;
-            }
-            var text;
-            if(this.parent instanceof AscCommonSlide.CNotes && this.nvSpPr.nvPr.ph.type === AscFormat.phType_body){
-                text = "Click to add notes";
-            }
-            else{
-                text = typeof pHText[0][this.nvSpPr.nvPr.ph.type] === "string" && pHText[0][this.nvSpPr.nvPr.ph.type].length > 0 ?  pHText[0][this.nvSpPr.nvPr.ph.type] : pHText[0][AscFormat.phType_body];
-            }
-
-            if (!this.txBody.content2){
-                this.txBody.content2 = AscFormat.CreateDocContentFromString(AscCommon.translateManager.getValue(text), this.getDrawingDocument(), this.txBody);
-            }
-            else
-            {
-                this.txBody.content2.Recalc_AllParagraphs_CompiledPr();
-            }
-
-            var content = this.txBody.content2;
-            if(content)
-            {
-                var w, h;
-                var l_ins, t_ins, r_ins, b_ins;
-                var body_pr = this.getBodyPr();
-                if(body_pr)
-                {
-                    l_ins = AscFormat.isRealNumber(body_pr.lIns) ? body_pr.lIns : 2.54;
-                    r_ins = AscFormat.isRealNumber(body_pr.rIns) ? body_pr.rIns : 2.54;
-                    t_ins = AscFormat.isRealNumber(body_pr.tIns) ? body_pr.tIns : 1.27;
-                    b_ins = AscFormat.isRealNumber(body_pr.bIns) ? body_pr.bIns : 1.27;
-                }
-                else
-                {
-                    l_ins = 2.54;
-                    r_ins = 2.54;
-                    t_ins = 1.27;
-                    b_ins = 1.27;
-                }
-                if(this.spPr.geometry && this.spPr.geometry.rect
-                    && AscFormat.isRealNumber(this.spPr.geometry.rect.l) && AscFormat.isRealNumber(this.spPr.geometry.rect.t)
-                    && AscFormat.isRealNumber(this.spPr.geometry.rect.r) && AscFormat.isRealNumber(this.spPr.geometry.rect.r))
-                {
-                    w = this.spPr.geometry.rect.r - this.spPr.geometry.rect.l - (l_ins + r_ins);
-                    h = this.spPr.geometry.rect.b - this.spPr.geometry.rect.t - (t_ins + b_ins);
-                }
-                else
-                {
-                    w = this.extX - (l_ins + r_ins);
-                    h = this.extY - (t_ins + b_ins);
-                }
-
-                if(!body_pr.upright)
-                {
-                    if(!(body_pr.vert === AscFormat.nVertTTvert || body_pr.vert === AscFormat.nVertTTvert270 || body_pr.vert === AscFormat.nVertTTeaVert))
-                    {
-                        this.txBody.contentWidth2 = w;
-                        this.txBody.contentHeight2 = h;
-                    }
-                    else
-                    {
-                        this.txBody.contentWidth2 = h;
-                        this.txBody.contentHeight2 = w;
-                    }
-
-                }
-                else
-                {
-                    var _full_rotate = this.getFullRotate();
-                    if(AscFormat.checkNormalRotate(_full_rotate))
-                    {
-                        if(!(body_pr.vert === AscFormat.nVertTTvert || body_pr.vert === AscFormat.nVertTTvert270 || body_pr.vert === AscFormat.nVertTTeaVert))
-                        {
-
-                            this.txBody.contentWidth2 = w;
-                            this.txBody.contentHeight2 = h;
-                        }
-                        else
-                        {
-                            this.txBody.contentWidth2 = h;
-                            this.txBody.contentHeight2 = w;
-                        }
-                    }
-                    else
-                    {
-                        if(!(body_pr.vert === AscFormat.nVertTTvert || body_pr.vert === AscFormat.nVertTTvert270 || body_pr.vert === AscFormat.nVertTTeaVert))
-                        {
-
-                            this.txBody.contentWidth2 = h;
-                            this.txBody.contentHeight2 = w;
-                        }
-                        else
-                        {
-                            this.txBody.contentWidth2 = w;
-                            this.txBody.contentHeight2 = h;
-                        }
-                    }
-                }
-
-
-            }
-            this.contentWidth2 = this.txBody.contentWidth2;
-            this.contentHeight2 = this.txBody.contentHeight2;
-
-
-            var content_ = this.getDocContent();
-            if(content_ && content_.Content[0])
-            {
-                content.Content[0].Pr  = content_.Content[0].Pr.Copy();
-                if(!content.Content[0].Pr.DefaultRunPr){
-                    content.Content[0].Pr.DefaultRunPr = new AscCommonWord.CTextPr();
-                }
-                content.Content[0].Pr.DefaultRunPr.Merge(content_.Content[0].GetFirstRunPr());
-            }
-            this.bCheckAutoFitFlag = true;
-            this.tmpFontScale = undefined;
-            this.tmpLnSpcReduction = undefined;
-            content.Set_StartPage(0);
-            content.Reset(0, 0, w, 20000);
-            content.RecalculateContent(this.txBody.contentWidth2, this.txBody.contentHeight2, 0);
-            var oTextWarpContent = this.checkTextWarp(content, body_pr, this.txBody.contentWidth2, this.txBody.contentHeight2, false, true);
-            this.txWarpStructParamarks2 = oTextWarpContent.oTxWarpStructParamarks;
-            this.txWarpStruct2 = oTextWarpContent.oTxWarpStruct;
-            this.bCheckAutoFitFlag = false;
-        }
-        else
-        {
-            this.txBody.content2 = null;
-            this.txWarpStructParamarks2 = null;
-            this.txWarpStruct2 = null;
-        }
-    }
-    else{
-        this.txWarpStructParamarks2 = null;
-        this.txWarpStruct2 = null;
-    }
-};
 
 CShape.prototype.Get_ColorMap = function()
 {
@@ -745,7 +571,7 @@ CShape.prototype.Get_ColorMap = function()
     {
         return parent_objects.master.clrMap;
     }
-    return G_O_DEFAULT_COLOR_MAP;
+    return AscFormat.GetDefaultColorMap();
 };
 
 CShape.prototype.getStyles = function(index)
@@ -783,18 +609,7 @@ CShape.prototype.getIsSingleBody = function(x, y)
 CShape.prototype.Set_CurrentElement = function(bUpdate, pageIndex){
     if(this.parent && this.parent.graphicObjects){
         var drawing_objects = this.parent.graphicObjects;
-        drawing_objects.resetSelection(true);
-        if(this.group){
-            var main_group = this.group.getMainGroup();
-            drawing_objects.selectObject(main_group, 0);
-            main_group.selectObject(this, 0);
-            main_group.selection.textSelection = this;
-            drawing_objects.selection.groupSelection = main_group;
-        }
-        else{
-            drawing_objects.selectObject(this, 0);
-            drawing_objects.selection.textSelection = this;
-        }
+        this.SetControllerTextSelection(drawing_objects, 0);
         var nSlideNum;
         if(this.parent instanceof AscCommonSlide.CNotes){
             editor.WordControl.m_oLogicDocument.FocusOnNotes = true;
@@ -835,7 +650,7 @@ CShape.prototype.OnContentReDraw = function(){
     }
 };
 
-    CShape.prototype.Is_ThisElementCurrent = function()
+    CShape.prototype.IsThisElementCurrent = function()
     {
         if(this.parent && this.parent.graphicObjects)
         {
@@ -864,5 +679,6 @@ CShape.prototype.OnContentReDraw = function(){
 
     //--------------------------------------------------------export----------------------------------------------------
     window['AscFormat'] = window['AscFormat'] || {};
-    window['AscFormat'].G_O_DEFAULT_COLOR_MAP = G_O_DEFAULT_COLOR_MAP;
+    window['AscFormat'].editorDeleteDrawingBase = editorDeleteDrawingBase;
+    window['AscFormat'].editorAddToDrawingObjects = editorAddToDrawingObjects;
 })(window);

@@ -105,7 +105,6 @@ function CEditorPage(api)
 	this.m_bIsRuler                     = (api.isMobileVersion === true) ? false : true;
 	this.m_bDocumentPlaceChangedEnabled = false;
 
-	this.m_nZoomValue        = 100;
 	this.m_oBoundsController = new AscFormat.CBoundsController();
 	this.m_nTabsType         = tab_Left;
 
@@ -161,6 +160,8 @@ function CEditorPage(api)
 
 	this.MouseDownDocumentCounter = 0;
 
+	this.isNewReaderMode = true;
+
 	this.bIsUseKeyPress = true;
 	this.bIsEventPaste  = false;
 	this.bIsDoublePx    = true;//поддерживает ли браузер нецелые пикселы
@@ -186,7 +187,12 @@ function CEditorPage(api)
     this.retinaScaling = AscCommon.AscBrowser.retinaPixelRatio;
 
 	this.zoom_values = [50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160, 170, 180, 190, 200, 210, 220, 230, 240, 250, 260, 270, 280, 290, 300, 320, 340, 360, 380, 400, 425, 450, 475, 500];
-	this.m_nZoomType = 0; // 0 - custom, 1 - fitToWodth, 2 - fitToPage
+	this.m_nZoomType = 0; // 0 - custom, 1 - fitToWidth, 2 - fitToPage
+	this.m_nZoomValue = 100;
+
+	// текущий зум после резайза. чтобы например после zoomToWidth и zoomIn/Out можно было вернуться на значение меньше меньшего/больше большего
+	this.m_nZoomValueMin = -1;
+	this.m_nZoomValueMax = -1;
 
 	this.MobileTouchManager = null;
 	this.ReaderTouchManager = null;
@@ -396,12 +402,6 @@ function CEditorPage(api)
 		// --------------------------------------------------------------------------
 
 		this.m_oDrawingDocument.TargetHtmlElement = document.getElementById('id_target_cursor');
-
-		if (this.m_oApi.isMobileVersion)
-		{
-			this.MobileTouchManager = new AscCommon.CMobileTouchManager( { eventsElement : "word_mobile_element" } );
-			this.MobileTouchManager.Init(this.m_oApi);
-		}
 
 		this.checkNeedRules();
 		this.initEvents2();
@@ -741,12 +741,17 @@ function CEditorPage(api)
 
 	this.initEventsMobile = function()
 	{
-        if (this.m_oApi.isMobileVersion)
+		if (this.m_oApi.isMobileVersion)
 		{
-		    this.TextBoxBackground = CreateControl(AscCommon.g_inputContext.HtmlArea.id);
-            this.TextBoxBackground.HtmlElement.parentNode.parentNode.style.zIndex = 10;
+			this.MobileTouchManager = new AscCommon.CMobileTouchManager( { eventsElement : "word_mobile_element" } );
+			this.MobileTouchManager.Init(this.m_oApi);
+			if (!this.MobileTouchManager.delegate.IsNativeViewer())
+				this.MobileTouchManager.Resize();
 
-            this.MobileTouchManager.initEvents(AscCommon.g_inputContext.HtmlArea.id);
+			this.TextBoxBackground = CreateControl(AscCommon.g_inputContext.HtmlArea.id);
+			this.TextBoxBackground.HtmlElement.parentNode.parentNode.style.zIndex = 10;
+
+			this.MobileTouchManager.initEvents(AscCommon.g_inputContext.HtmlArea.id);
 
 			if (AscBrowser.isAndroid)
 			{
@@ -844,6 +849,12 @@ function CEditorPage(api)
 
 	this.zoom_FitToWidth = function()
 	{
+		if (this.m_oApi.isUseNativeViewer && this.m_oDrawingDocument.m_oDocumentRenderer)
+		{
+			this.m_oDrawingDocument.m_oDocumentRenderer.setZoomMode(AscCommon.ViewerZoomMode.Width);
+			return;
+		}
+
 		var _new_value = this.calculate_zoom_FitToWidth();
 
 		this.m_nZoomType = 1;
@@ -866,6 +877,12 @@ function CEditorPage(api)
 	};
 	this.zoom_FitToPage  = function()
 	{
+		if (this.m_oApi.isUseNativeViewer && this.m_oDrawingDocument.m_oDocumentRenderer)
+		{
+			this.m_oDrawingDocument.m_oDocumentRenderer.setZoomMode(AscCommon.ViewerZoomMode.Page);
+			return;
+		}
+
 		var w = parseInt(this.m_oEditor.HtmlElement.width) * g_dKoef_pix_to_mm;
 		var h = parseInt(this.m_oEditor.HtmlElement.height) * g_dKoef_pix_to_mm;
 
@@ -903,6 +920,15 @@ function CEditorPage(api)
 	{
 		if (false === oThis.m_oApi.bInit_word_control)
 			return;
+
+		if (0 === type)
+		{
+			if (oThis.m_oApi.isUseNativeViewer && oThis.m_oDrawingDocument.m_oDocumentRenderer)
+			{
+				oThis.m_oDrawingDocument.m_oDocumentRenderer.setZoom(oThis.m_nZoomValue / 100);
+				return;
+			}
+		}
 
 		// нужно проверить режим и сбросить кеш грамотно (ie version)
 		AscCommon.g_fontManager.ClearRasterMemory();
@@ -993,6 +1019,9 @@ function CEditorPage(api)
 			}
 		}
 
+		if (_Zoom >= oThis.m_nZoomValue && (oThis.m_nZoomValueMin > 0 && _Zoom > oThis.m_nZoomValueMin))
+			_Zoom = oThis.m_nZoomValueMin;
+
 		if (oThis.m_nZoomValue <= _Zoom)
 			return;
 
@@ -1020,6 +1049,9 @@ function CEditorPage(api)
 				break;
 			}
 		}
+
+		if (_Zoom <= oThis.m_nZoomValue && (oThis.m_nZoomValueMax > 0 && _Zoom < oThis.m_nZoomValueMax))
+			_Zoom = oThis.m_nZoomValueMax;
 
 		if (oThis.m_nZoomValue >= _Zoom)
 			return;
@@ -1171,6 +1203,20 @@ function CEditorPage(api)
 			this.OnScroll();
 			return;
 		}
+	};
+
+	this.ScrollToAbsolutePosition = function(x, y, page, isBottom)
+	{
+		let pos = this.m_oDrawingDocument.ConvertCoordsToCursor(x, y, page);
+		if (pos.Error)
+			return;
+
+		if (true === isBottom)
+			pos.Y -= AscCommon.AscBrowser.convertToRetinaValue(this.m_oEditor.HtmlElement.height);
+
+		// TODO: X position?
+		if (0 !== pos.Y)
+			this.m_oScrollVerApi.scrollToY(pos.Y + this.m_dScrollY);
 	};
 
 	this.onButtonTabsClick = function()
@@ -1861,8 +1907,6 @@ function CEditorPage(api)
 			oWordControl.MouseDownDocumentCounter = 0;
 
 		oWordControl.m_bIsMouseUpSend = false;
-		oWordControl.m_oLogicDocument.Document_UpdateInterfaceState();
-		oWordControl.m_oLogicDocument.Document_UpdateRulersState();
 
 		oWordControl.EndUpdateOverlay();
 
@@ -2181,40 +2225,68 @@ function CEditorPage(api)
 
 	this.ChangeReaderMode = function()
 	{
+		if (!this.m_oLogicDocument)
+			return;
+
 		if (this.ReaderModeCurrent)
 			this.DisableReaderMode();
 		else
 			this.EnableReaderMode();
 	};
 
+	this.SetNewMobileMode = function()
+	{
+		if (this.m_oLogicDocument)
+		{
+			if (this.m_oDrawingDocument)
+			{
+				this.m_nZoomType = 1;
+				this.m_oDrawingDocument.m_bUpdateAllPagesOnFirstRecalculate = true;
+			}
+			let sectPr = this.m_oLogicDocument.GetSectionsInfo().Get(0).SectPr;
+			const nPageW = sectPr.GetPageWidth() / AscCommon.AscBrowser.retinaPixelRatio;
+			const nPageH = sectPr.GetPageHeight() / AscCommon.AscBrowser.retinaPixelRatio;
+			const nScale = this.ReaderFontSizes[this.ReaderFontSizeCur] / 16;
+			this.m_oLogicDocument.SetDocumentReadMode(nPageW, nPageH, nScale);
+			return true;
+		}
+		return false;
+	};
+
 	this.IncreaseReaderFontSize = function()
 	{
-		if (null == this.ReaderModeDiv)
-			return;
-
 		if (this.ReaderFontSizeCur >= (this.ReaderFontSizes.length - 1))
 		{
 			this.ReaderFontSizeCur = this.ReaderFontSizes.length - 1;
 			return;
 		}
 		this.ReaderFontSizeCur++;
-		this.ReaderModeDiv.style.fontSize = this.ReaderFontSizes[this.ReaderFontSizeCur] + "pt";
 
+		if (this.isNewReaderMode && this.SetNewMobileMode())
+			return;
+
+		if (null == this.ReaderModeDiv)
+			return;
+
+		this.ReaderModeDiv.style.fontSize = this.ReaderFontSizes[this.ReaderFontSizeCur] + "pt";
 		this.ReaderTouchManager.ChangeFontSize();
 	};
 	this.DecreaseReaderFontSize = function()
 	{
-		if (null == this.ReaderModeDiv)
-			return;
-
 		if (this.ReaderFontSizeCur <= 0)
 		{
 			this.ReaderFontSizeCur = 0;
 			return;
 		}
 		this.ReaderFontSizeCur--;
-		this.ReaderModeDiv.style.fontSize = this.ReaderFontSizes[this.ReaderFontSizeCur] + "pt";
 
+		if (this.isNewReaderMode && this.SetNewMobileMode())
+			return;
+
+		if (null == this.ReaderModeDiv)
+			return;
+
+		this.ReaderModeDiv.style.fontSize = this.ReaderFontSizes[this.ReaderFontSizeCur] + "pt";
 		this.ReaderTouchManager.ChangeFontSize();
 	};
 
@@ -2234,6 +2306,12 @@ function CEditorPage(api)
 
 	this.EnableReaderMode = function()
 	{
+		if (this.isNewReaderMode && this.SetNewMobileMode())
+		{
+			this.ReaderModeCurrent = 1;
+			return;
+		}
+
 		this.ReaderModeCurrent = 1;
 		if (this.ReaderTouchManager)
 		{
@@ -2271,43 +2349,28 @@ function CEditorPage(api)
 
 		this.TransformDivUseAnimation(this.ReaderModeDivWrapper, 0);
 
-		var __hasTouch = 'ontouchstart' in window;
+		var hasPointer = AscCommon.AscBrowser.isIE ? ((!('ontouchstart' in window)) &&  (!!(window.PointerEvent || window.MSPointerEvent))) : false;
+		if (AscCommon.AscBrowser.isAppleDevices && AscCommon.AscBrowser.iosVersion >= 13)
+			hasPointer = true;
 
-		if (__hasTouch)
-		{
-			this.ReaderModeDivWrapper["ontouchcancel"] = function(e)
-			{
-				return oThis.ReaderTouchManager.onTouchEnd(e);
-			}
+		var eventNames = hasPointer ? ["onpointerdown", "onpointermove", "onpointerup", "onpointercancel"] : ["ontouchstart", "ontouchmove", "ontouchend", "ontouchcancel"];
 
-			this.ReaderModeDivWrapper["ontouchstart"] = function(e)
-			{
-				return oThis.ReaderTouchManager.onTouchStart(e);
-			}
-			this.ReaderModeDivWrapper["ontouchmove"]  = function(e)
-			{
-				return oThis.ReaderTouchManager.onTouchMove(e);
-			}
-			this.ReaderModeDivWrapper["ontouchend"]   = function(e)
-			{
-				return oThis.ReaderTouchManager.onTouchEnd(e);
-			}
-		}
-		else
+		this.ReaderModeDivWrapper[eventNames[0]] = function(e)
 		{
-			this.ReaderModeDivWrapper["onmousedown"] = function(e)
-			{
-				return oThis.ReaderTouchManager.onTouchStart(e);
-			}
-			this.ReaderModeDivWrapper["onmousemove"] = function(e)
-			{
-				return oThis.ReaderTouchManager.onTouchMove(e);
-			}
-			this.ReaderModeDivWrapper["onmouseup"]   = function(e)
-			{
-				return oThis.ReaderTouchManager.onTouchEnd(e);
-			}
-		}
+			return oThis.ReaderTouchManager.onTouchStart(e);
+		};
+		this.ReaderModeDivWrapper[eventNames[1]]  = function(e)
+		{
+			return oThis.ReaderTouchManager.onTouchMove(e);
+		};
+		this.ReaderModeDivWrapper[eventNames[2]] = function(e)
+		{
+			return oThis.ReaderTouchManager.onTouchEnd(e);
+		};
+		this.ReaderModeDivWrapper[eventNames[3]] = function(e)
+		{
+			return oThis.ReaderTouchManager.onTouchEnd(e);
+		};
 
 		//this.m_oEditor.HtmlElement.style.display = "none";
 		//this.m_oOverlay.HtmlElement.style.display = "none";
@@ -2315,6 +2378,18 @@ function CEditorPage(api)
 
 	this.DisableReaderMode = function()
 	{
+		if (this.isNewReaderMode && this.m_oLogicDocument)
+		{
+			this.ReaderModeCurrent = 0;
+			if (this.m_oDrawingDocument)
+			{
+				this.m_nZoomType = 1;
+				this.m_oDrawingDocument.m_bUpdateAllPagesOnFirstRecalculate = true;
+			}
+			this.m_oLogicDocument.SetDocumentPrintMode();
+			return;
+		}
+
 		this.ReaderModeCurrent = 0;
 		if (null == this.ReaderModeDivWrapper)
 			return;
@@ -2762,6 +2837,16 @@ function CEditorPage(api)
 	{
 		this.m_bIsFullRepaint = true;
 		this.OnScroll();
+
+		if (this.m_oApi.isUseNativeViewer)
+		{
+			var oViewer = this.m_oDrawingDocument.m_oDocumentRenderer;
+			if (oViewer)
+			{
+				oViewer.isClearPages = true;
+				oViewer.paint();
+			}
+		}
 	};
 
 	this.OnResize = function(isAttack)
@@ -2772,12 +2857,24 @@ function CEditorPage(api)
 		if (!isNewSize && false === isAttack)
 			return;
 
+		this.m_nZoomValueMin = -1;
+		this.m_nZoomValueMax = -1;
 		if (this.MobileTouchManager)
 			this.MobileTouchManager.Resize_Before();
+
+		if (this.m_oApi.printPreview)
+			this.m_oApi.printPreview.resize();
 
 		this.CheckRetinaDisplay();
 		this.m_oBody.Resize(this.Width * g_dKoef_pix_to_mm, this.Height * g_dKoef_pix_to_mm, this);
 		this.onButtonTabsDraw();
+
+		if (this.m_oApi.isUseNativeViewer)
+		{
+			var oViewer = this.m_oDrawingDocument.m_oDocumentRenderer;
+			if (oViewer)
+				oViewer.resize();
+		}
 
 		if (AscCommon.g_inputContext)
 			AscCommon.g_inputContext.onResize("id_main_view");
@@ -3230,6 +3327,12 @@ function CEditorPage(api)
 
 	this.OnCalculatePagesPlace = function()
 	{
+		if (this.m_oApi.isUseNativeViewer && this.m_oDrawingDocument.m_oDocumentRenderer)
+		{
+			// там все свое
+			return;
+		}
+
 		if (this.MobileTouchManager && !this.MobileTouchManager.IsWorkedPosition())
 			this.MobileTouchManager.ClearContextMenu();
 
@@ -3518,7 +3621,7 @@ function CEditorPage(api)
 			_c.m_oDrawingDocument.CheckFontCache();
 		}
 
-		oThis.m_oLogicDocument.ContinueCheckSpelling();
+		oThis.m_oLogicDocument.ContinueSpellCheck();
 		oThis.m_oLogicDocument.ContinueTrackRevisions();
 	};
 	this.OnScroll       = function(isFromLA)

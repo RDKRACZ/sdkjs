@@ -617,6 +617,14 @@ CAutoshapeTrack.prototype =
         this.Native["DD_DrawAdjustment"](x, y);
     },
 
+    DrawGeomEditPoint: function(matrix, gmEditPoint)
+    {
+    },
+
+    DrawGeometryEdit: function (matrix, pathLst, gmEditList, gmEditPoint, oBounds)
+    {
+    },
+
     DrawEditWrapPointsPolygon : function(points, matrix)
     {
         if (!matrix)
@@ -780,6 +788,10 @@ CAutoshapeTrack.prototype =
     {
     },
     GetTextPr : function()
+    {
+    },
+
+    SetFontInternal : function(name, size, style)
     {
     },
 
